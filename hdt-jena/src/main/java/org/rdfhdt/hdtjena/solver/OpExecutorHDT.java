@@ -26,7 +26,7 @@
 
 package org.rdfhdt.hdtjena.solver;
 
-import org.apache.jena.atlas.lib.Tuple;
+import org.apache.jena.atlas.lib.tuple.Tuple;
 import org.apache.jena.atlas.logging.Log;
 import org.rdfhdt.hdtjena.HDTGraph;
 import org.rdfhdt.hdtjena.HDTJenaConstants;
