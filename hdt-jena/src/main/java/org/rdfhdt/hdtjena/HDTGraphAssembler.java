@@ -35,6 +35,7 @@ import org.apache.jena.graph.Graph;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.sparql.graph.GraphFactory;
 import org.apache.jena.sparql.util.graph.GraphUtils;
 import org.rdfhdt.hdt.hdt.HDT;
 import org.rdfhdt.hdt.hdt.HDTManager;
@@ -47,7 +48,6 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class HDTGraphAssembler extends AssemblerBase implements Assembler {
   private static final Logger log = LoggerFactory.getLogger(HDTGraphAssembler.class);
@@ -55,7 +55,6 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
   private static boolean initialized;
 
   static {
-    System.err.println("HDTGraphAssembler patch");
     init();
   }
 
@@ -75,12 +74,10 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
     File file = new File(filePath);
     if (file.isFile()) {
       log.info("HDT pointing to file {}", file);
-      System.err.println("HDT pointing to file " + file);
       return ModelFactory.createModelForGraph(createHdtGraph(root, filePath, loadInMemory));
     }
     if (file.isDirectory()) {
       log.info("HDT pointing to folder {}", file);
-      System.err.println("HDT pointing to folder " + file);
       return createFromFolder(root, file, loadInMemory);
     }
     throw new AssemblerException(root, "Filename doesn't point to file or folder: " + file);
@@ -92,9 +89,7 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
     try {
       // FIXME: Read more properties. Cache config?
       HDT hdt = loadInMemory ? HDTManager.loadIndexedHDT(file, null) : HDTManager.mapIndexedHDT(file, null);
-      HDTGraph hdtGraph = new HDTGraph(hdt);
-      System.err.println("Created - " + hdtGraph.hashCode());
-      return hdtGraph;
+      return new HDTGraph(hdt);
     }
     catch (IOException e) {
       log.error("Error reading HDT file: " + file, e);
@@ -102,41 +97,37 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
     }
   }
 
-  private Model createFromFolder(final Resource root, final File folder, final boolean loadInMemory) {
+  private Model createFromFolder(Resource root, File folder, boolean loadInMemory) {
     log.info("Creating HDT from folder {}", folder);
-    File file = getCurrentHdtFile(root, folder);
 
-    HDTGraph startingGraph = createHdtGraph(root, file.getAbsolutePath(), loadInMemory);
-
-    final GraphInvocationHandler invocationHandler = new GraphInvocationHandler(startingGraph, file);
-
-
-    final AtomicReference<File> currentFile = new AtomicReference<File>(file);
+    GraphInvocationHandler invocationHandler = new GraphInvocationHandler();
 
     Thread thread = new Thread("HDTupdater") {
       @Override
       public void run() {
+        log.info("HDT check thread started");
         while (true) {
           try {
             File file = getCurrentHdtFile(root, folder);
-            if (!currentFile.get().equals(file)) {
-              System.err.println("HDT trying to change from " + currentFile.get() + " to " + file);
-              log.info("HDT trying to change from {} to {}", currentFile.get(), file);
+
+
+            log.info("HDT compare {} to {}", invocationHandler.currentFile, file);
+
+            if (!file.equals(invocationHandler.currentFile)) {
+              log.info("HDT trying to change from {} to {}", invocationHandler.currentFile, file);
               Graph oldGraph = invocationHandler.graph;
               invocationHandler.graph = createHdtGraph(root, file.getAbsolutePath(), loadInMemory);
-              currentFile.set(file);
+              invocationHandler.currentFile = file;
               try {
-                System.err.println("Closing old: " + oldGraph.hashCode());
                 oldGraph.close();
               }
               catch (Exception ignore) {
               }
               log.info("HDT changed to {}", file);
-              System.err.println("HDT changed to " + file);
             }
 
           }
-          catch (Exception e) {
+          catch (Throwable e) {
             log.error("Failed to update HDT file", e);
           }
 
@@ -159,7 +150,7 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
 
   private File getCurrentHdtFile(Resource root, File folder) {
     try {
-      String current = FileUtils.readFileToString(new File(folder, "current.txt"), StandardCharsets.UTF_8).trim();
+      String current = FileUtils.readFileToString(new File(folder, "current.txt")).trim(); //deprecated in commons-io 2.5, but fuseki 3.4.0 includes commons-io 2.2 !!!
       File currentFile = new File(folder, current);
       if (!currentFile.isFile()) throw new AssemblerException(root, "Current HDT file not found " + currentFile);
       return currentFile;
@@ -178,14 +169,13 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
     private volatile Graph graph;
     private volatile File currentFile;
 
-    public GraphInvocationHandler(Graph graph, File currentFile) {
-      this.graph = graph;
-      this.currentFile = currentFile;
+    public GraphInvocationHandler() {
+      this.graph = GraphFactory.createGraphMem();
+      this.currentFile = null;
     }
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-      System.err.println(method + " on " + graph.hashCode() + " [" + graph.isClosed() + "]");
       return method.invoke(graph, args);
     }
   }
