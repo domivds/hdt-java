@@ -78,7 +78,10 @@ public class OptimizedCount {
     }
 
     // Must have one element only
-    ElementGroup el = (ElementGroup) query.getQueryPattern();
+    Element queryPattern = query.getQueryPattern();
+    if (!(queryPattern instanceof ElementGroup)) return null;
+
+    ElementGroup el = (ElementGroup) queryPattern;
     List<Element> list = el.getElements();
     if (list.size() != 1) {
       return null;
