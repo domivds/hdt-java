@@ -155,16 +155,21 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
 
   private File getCurrentHdtFile(Resource root, File folder) {
     try {
-      String current = FileUtils.readFileToString(new File(folder, "current.txt")).trim(); //deprecated in commons-io 2.5, but fuseki 3.4.0 includes commons-io 2.2 !!!
-      File currentFile = new File(folder, current);
-      if (!currentFile.isFile()) {
-        log.error("Current HDT file not found " + currentFile);
+      File currentInfoFile = new File(folder, "current.txt");
+      if (!currentInfoFile.isFile()) {
+        log.error("Current INFO file not found: '{}'", currentInfoFile);
         return null;
       }
-      return currentFile;
+      String current = FileUtils.readFileToString(currentInfoFile).trim(); //deprecated in commons-io 2.5, but fuseki 3.4.0 includes commons-io 2.2 !!!
+      File currentHdtFile = new File(folder, current);
+      if (!currentHdtFile.isFile()) {
+        log.error("Current HDT file not found: '{}'", currentHdtFile);
+        return null;
+      }
+      return currentHdtFile;
     }
     catch (IOException e) {
-      throw new AssemblerException(root, "Failed to load current.txt file in " + folder, e);
+      throw new AssemblerException(root, "Failed to load current data in folder '" + folder + "'", e);
     }
   }
 
