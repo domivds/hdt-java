@@ -47,7 +47,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 public class HDTGraphAssembler extends AssemblerBase implements Assembler {
   private static final Logger log = LoggerFactory.getLogger(HDTGraphAssembler.class);
@@ -105,24 +105,30 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
     Thread thread = new Thread("HDTupdater") {
       @Override
       public void run() {
+        Graph toCloseGraph = null;
         log.info("HDT check thread started");
+        //noinspection InfiniteLoopStatement
         while (true) {
+          if (null != toCloseGraph) {
+            try {
+              log.info("Going to close an old graph");
+              toCloseGraph.close();
+            }
+            catch (Exception ignore) {
+            }
+            toCloseGraph = null;
+          }
           try {
             File file = getCurrentHdtFile(root, folder);
 
-
-            log.info("HDT compare {} to {}", invocationHandler.currentFile, file);
-
-            if (!file.equals(invocationHandler.currentFile)) {
+            if (null != file && !file.equals(invocationHandler.currentFile)) {
               log.info("HDT trying to change from {} to {}", invocationHandler.currentFile, file);
               Graph oldGraph = invocationHandler.graph;
               invocationHandler.graph = createHdtGraph(root, file.getAbsolutePath(), loadInMemory);
               invocationHandler.currentFile = file;
-              try {
-                oldGraph.close();
-              }
-              catch (Exception ignore) {
-              }
+
+              toCloseGraph = oldGraph; //we use intermediate oldGraph so we don't close the current graph if creating a new one fails
+
               log.info("HDT changed to {}", file);
             }
 
@@ -130,9 +136,8 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
           catch (Throwable e) {
             log.error("Failed to update HDT file", e);
           }
-
           try {
-            Thread.sleep(60000L);
+            Thread.sleep(TimeUnit.MINUTES.toMillis(5)); //5 minutes so we can also handle the graph close in the same thread
           }
           catch (InterruptedException ignore) {
           }
@@ -152,7 +157,10 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
     try {
       String current = FileUtils.readFileToString(new File(folder, "current.txt")).trim(); //deprecated in commons-io 2.5, but fuseki 3.4.0 includes commons-io 2.2 !!!
       File currentFile = new File(folder, current);
-      if (!currentFile.isFile()) throw new AssemblerException(root, "Current HDT file not found " + currentFile);
+      if (!currentFile.isFile()) {
+        log.error("Current HDT file not found " + currentFile);
+        return null;
+      }
       return currentFile;
     }
     catch (IOException e) {
