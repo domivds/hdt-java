@@ -108,6 +108,7 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
         Graph toCloseGraph = null;
         log.info("HDT check thread started");
         //noinspection InfiniteLoopStatement
+        boolean logError = true;
         while (true) {
           if (null != toCloseGraph) {
             try {
@@ -119,9 +120,11 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
             toCloseGraph = null;
           }
           try {
-            File file = getCurrentHdtFile(root, folder);
+            File file = getCurrentHdtFile(root, folder, logError);
+            logError = false;
 
             if (null != file && !file.equals(invocationHandler.currentFile)) {
+              logError = true;
               log.info("HDT trying to change from {} to {}", invocationHandler.currentFile, file);
               Graph oldGraph = invocationHandler.graph;
               invocationHandler.graph = createHdtGraph(root, file.getAbsolutePath(), loadInMemory);
@@ -130,6 +133,7 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
               toCloseGraph = oldGraph; //we use intermediate oldGraph so we don't close the current graph if creating a new one fails
 
               log.info("HDT changed to {}", file);
+              logError = true;
             }
 
           }
@@ -153,17 +157,17 @@ public class HDTGraphAssembler extends AssemblerBase implements Assembler {
   }
 
 
-  private File getCurrentHdtFile(Resource root, File folder) {
+  private File getCurrentHdtFile(Resource root, File folder, boolean logError) {
     try {
       File currentInfoFile = new File(folder, "current.txt");
       if (!currentInfoFile.isFile()) {
-        log.error("Current INFO file not found: '{}'", currentInfoFile);
+        if(logError) log.error("Current INFO file not found: '{}'", currentInfoFile);
         return null;
       }
       String current = FileUtils.readFileToString(currentInfoFile).trim(); //deprecated in commons-io 2.5, but fuseki 3.4.0 includes commons-io 2.2 !!!
       File currentHdtFile = new File(folder, current);
       if (!currentHdtFile.isFile()) {
-        log.error("Current HDT file not found: '{}'", currentHdtFile);
+        if(logError) log.error("Current HDT file not found: '{}'", currentHdtFile);
         return null;
       }
       return currentHdtFile;
